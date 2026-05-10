@@ -9,6 +9,20 @@ function haversine(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
+function interpolatePath(points, stepsPerSegment = 80) {
+  if (points.length < 2) return points;
+  const result = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const from = points[i], to = points[i + 1];
+    for (let s = 0; s < stepsPerSegment; s++) {
+      const t = s / stepsPerSegment;
+      result.push({ lat: from.lat + (to.lat - from.lat) * t, lng: from.lng + (to.lng - from.lng) * t });
+    }
+  }
+  result.push(points[points.length - 1]);
+  return result;
+}
+
 function nearestNeighbor(origin, points) {
   if (!points.length) return [];
   const visited = new Set();
@@ -32,6 +46,8 @@ function nearestNeighbor(origin, points) {
  * Gestiona toda la lógica de animación, ruta y recolección para UN camión.
  * Se auto-reinicia 12s después de completar el recorrido.
  */
+const TRUCK_DELAY = { R1: 0, R2: 1500, R3: 3000 };
+
 export function useOneTruck(truck, containersRef, onCollected) {
   const mapsLoaded = useMapsLoaded();
 
@@ -211,16 +227,22 @@ export function useOneTruck(truck, containersRef, onCollected) {
           leg.steps.forEach(step => step.path.forEach(p => path.push({ lat: p.lat(), lng: p.lng() }))));
         setFullPath(path);
       } catch {
-        setFullPath([truck.depot, ...routeStops.map(s => ({ lat: s.lat, lng: s.lng })), truck.depot]);
+        const raw = [truck.depot, ...routeStops.map(s => ({ lat: s.lat, lng: s.lng })), truck.depot];
+        setFullPath(interpolatePath(raw));
       }
     } else {
-      setFullPath([truck.depot, ...routeStops.map(s => ({ lat: s.lat, lng: s.lng })), truck.depot]);
+      const raw = [truck.depot, ...routeStops.map(s => ({ lat: s.lat, lng: s.lng })), truck.depot];
+      setFullPath(interpolatePath(raw));
     }
     setLoading(false);
   }, [truck, mapsLoaded, computeLocal]); // eslint-disable-line
 
-  // Carga inicial
-  useEffect(() => { fetchRoute(); }, [mapsLoaded]); // eslint-disable-line
+  // Carga inicial con delay escalonado para no saturar Directions API
+  useEffect(() => {
+    const delay = TRUCK_DELAY[truck.id] ?? 0;
+    const t = setTimeout(() => fetchRoute(), delay);
+    return () => clearTimeout(t);
+  }, [mapsLoaded]); // eslint-disable-line
 
   // Auto-reinicio 12 s después de terminar el recorrido
   useEffect(() => {

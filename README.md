@@ -6,30 +6,25 @@ Sistema inteligente de monitoreo y gestión de residuos sólidos urbanos mediant
 
 ## Descripcion del proyecto
 
-DroneWaste propone una solución tecnológica al problema de desbordamiento de contenedores de residuos en zonas urbanas de alta densidad. La hipótesis central es que la recolección reactiva basada en rutas fijas genera ineficiencias operativas y ambientales: los camiones recorren trayectos predeterminados independientemente del estado real de los contenedores, lo que resulta en recogidas innecesarias o en contenedores que permanecen desbordados durante horas.
+DroneWaste propone una solución tecnológica al problema de desbordamiento de contenedores de residuos en zonas urbanas de alta densidad. La hipótesis central es que la recolección reactiva basada en rutas fijas genera ineficiencias operativas y ambientales: los camiones recorren trayectos predeterminados independientemente del estado real de los contenedores.
 
-El sistema despliega una flota de tres drones autónomos sobre Chapinero que sobrevuelan la localidad de forma continua, capturando imágenes de los 30 contenedores distribuidos en los corredores de Carrera 7, Carrera 11 y Carrera 13. Cada imagen es procesada por un módulo de visión artificial basado en MobileNetV3 embebido en una Raspberry Pi 4 a bordo del dron, que clasifica el nivel de llenado del contenedor en cinco categorías: VACIO, BAJO, MEDIO, ALTO y DESBORDADO.
+El sistema despliega una flota de tres drones autónomos sobre Chapinero que sobrevuelan la localidad de forma continua, patrullando hacia los contenedores más críticos de su zona. Cada imagen capturada puede ser procesada por un clasificador de visión artificial (MobileNetV3) entrenado localmente o por Gemini Vision como respaldo, que clasifica el nivel de llenado en cinco categorías: VACIO, BAJO, MEDIO, ALTO y DESBORDADO.
 
-Cuando un contenedor supera el umbral crítico, el sistema de optimización D-VRP (Drone-assisted Vehicle Routing Problem) calcula en tiempo real la ruta más eficiente para el camión recolector asignado a esa zona, aplicando el algoritmo nearest-neighbor con mejora 2-opt. Esto permite reducir los kilómetros recorridos y las emisiones de CO2 respecto a la recolección por ruta fija.
-
-El backend expone los datos en tiempo real mediante WebSocket STOMP y una API REST, mientras que el frontend presenta un dashboard interactivo con mapa oscuro de Chapinero, animación de drones, indicadores de estado y simulación del proceso de recolección.
+Cuando una zona acumula al menos 4 contenedores en estado crítico, el optimizador de rutas basado en OR-Tools (Google Operations Research) calcula en tiempo real la ruta más eficiente para el camión recolector, aplicando CVRP con restricciones de capacidad volumétrica (12.000 L por vehículo). Los 3 camiones operan simultáneamente, cada uno en su zona, y se auto-reinician al completar el recorrido.
 
 ---
 
 ## Arquitectura del sistema
 
 ```
-Drones (MobileNetV3 + Raspberry Pi 4)
-        |
-        v
-Backend Spring Boot 3  <-->  H2 in-memory DB
-        |
-   API REST + WebSocket STOMP
-        |
-        v
-Frontend React + Google Maps
-        |
-   Gemini Vision API (clasificacion de imagenes)
+[React Frontend :5173]
+        │
+        ├── /api/*         → Spring Boot :8080  (simulación, drones, alertas)
+        ├── /ai/classify   → FastAPI Python :8000  (MobileNetV3 clasificador)
+        └── /routes/solve  → FastAPI Python :8000  (OR-Tools CVRP)
+
+[Spring Boot]  ←→  H2 in-memory DB (70 contenedores, 3 drones)
+[FastAPI]      ←→  model.pt (MobileNetV3 entrenado)
 ```
 
 ---
@@ -38,22 +33,23 @@ Frontend React + Google Maps
 
 | Capa | Stack |
 |---|---|
-| Frontend | React 18, Vite, Google Maps JavaScript API, Directions API |
+| Frontend | React 19, Vite, Google Maps JavaScript API, Directions API |
 | Backend | Spring Boot 3, Java 21, H2 en memoria, WebSocket STOMP |
-| Inteligencia Artificial | Gemini 1.5 Flash Vision API |
-| Algoritmo de rutas | D-VRP con nearest-neighbor y mejora 2-opt |
+| Microservicio IA | FastAPI (Python 3.11), MobileNetV3, OR-Tools CVRP |
+| Clasificación fallback | Gemini 1.5 Flash Vision API |
+| Optimización de rutas | OR-Tools CVRP (Google) + nearest-neighbor 2-opt (Java) |
 | Infraestructura | Docker, Docker Compose, Nginx |
 
 ---
 
 ## Requisitos previos
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) instalado y en ejecucion
-- Una cuenta de Google para obtener las API keys (ambas gratuitas)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) instalado y en ejecución
+- Una cuenta de Google para obtener las API keys (gratuitas)
 
 ---
 
-## Instalacion y ejecucion
+## Instalación y ejecución
 
 ### 1. Clonar el repositorio
 
@@ -63,8 +59,6 @@ cd DroneWaste
 ```
 
 ### 2. Configurar las API keys
-
-Copia el archivo de ejemplo y editalo con tus keys:
 
 ```bash
 # Windows
@@ -76,39 +70,39 @@ cp .env.example .env
 nano .env
 ```
 
-El archivo `.env` debe quedar asi:
+El archivo `.env` debe quedar así:
 
-```
+```env
 VITE_GOOGLE_MAPS_KEY=tu_key_de_google_maps
 VITE_GEMINI_KEY=tu_key_de_gemini
+VITE_AI_URL=http://localhost:8000
 ```
 
-#### Como obtener las keys
+#### Cómo obtener las keys
 
-**Google Maps Key** — para el mapa interactivo y las rutas:
+**Google Maps Key** — mapa interactivo y rutas en calles reales:
 1. Ir a [console.cloud.google.com](https://console.cloud.google.com)
-2. Crear un proyecto o seleccionar uno existente
-3. Activar Maps JavaScript API y Directions API
-4. Ir a Credenciales → Crear credencial → Clave de API
+2. Activar **Maps JavaScript API** y **Directions API**
+3. Credenciales → Crear clave de API
 
-**Gemini Key** — para el clasificador de imagenes con IA:
+**Gemini Key** — clasificador de imágenes (fallback si el modelo local no está disponible):
 1. Ir a [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)
-2. Hacer clic en Create API Key
-3. Copiar la key generada
+2. Create API Key → copiar la key
 
 ---
 
-### 3. Levantar el sistema con Docker
+### 3. Levantar el sistema
 
 ```bash
 docker compose up --build
 ```
 
-La primera vez tarda entre 3 y 5 minutos mientras descarga las imagenes base de Maven, Node y Nginx.
+La primera vez tarda 5-8 minutos (descarga Maven, Node, Python y OR-Tools).
 
-Cuando aparezcan estos mensajes el sistema esta listo:
+El sistema está listo cuando aparezcan estos mensajes:
 
 ```
+dronewaste-ai     | INFO: Application startup complete.
 dronewaste-back   | Started DroneWasteApplication in 3.x seconds
 dronewaste-front  | nginx: [notice] start worker processes
 ```
@@ -121,14 +115,28 @@ http://localhost:5173
 
 ---
 
-## Comandos utiles
+## Comportamiento del sistema
 
-| Comando | Descripcion |
+Una vez iniciado, el sistema opera de forma completamente automática:
+
+- **Drones** — los 3 drones patrullan hacia los contenedores ALTO/DESBORDADO de su zona
+- **Contenedores** — se llenan progresivamente según su tasa individual (comercial o residencial)
+- **Camiones** — cuando una zona acumula ≥ 4 contenedores críticos, el camión calcula la ruta óptima con OR-Tools y sale automáticamente
+- **Recolección** — al llegar a cada contenedor, lo vacía y actualiza el backend
+- **Auto-reinicio** — 12 segundos después de completar el recorrido, el camión recalcula y sale de nuevo
+
+---
+
+## Comandos útiles
+
+| Comando | Descripción |
 |---|---|
-| `docker compose up --build` | Primera vez o despues de cambios en el codigo |
+| `docker compose up --build` | Primera vez o después de cambios en el código |
 | `docker compose up` | Arrancar sin reconstruir |
 | `docker compose down` | Apagar los contenedores |
 | `docker compose logs -f` | Ver logs en tiempo real |
+| `docker compose logs backend -f` | Logs solo del backend Java |
+| `docker compose logs ai -f` | Logs del microservicio Python |
 
 ---
 
@@ -136,9 +144,15 @@ http://localhost:5173
 
 ```
 DroneWaste/
-├── DroneWaste_front/     # React + Vite (puerto 5173)
-├── DroneWaste_back/      # Spring Boot (puerto 8080)
-├── docker-compose.yml    # Orquestacion de contenedores
+├── DroneWaste_front/     # React + Vite (puerto 5173 → Nginx :80)
+├── DroneWaste_back/      # Spring Boot Java (puerto 8080)
+├── DroneWaste_ai/        # FastAPI Python — clasificador + OR-Tools (puerto 8000)
+│   ├── main.py           # Servidor FastAPI
+│   ├── optimizer.py      # Solver CVRP con OR-Tools
+│   └── model/
+│       ├── train.ipynb   # Notebook de entrenamiento MobileNetV3
+│       └── labels.json   # Mapeo de clases del modelo
+├── docker-compose.yml    # Orquestación de los 3 servicios
 ├── .env.example          # Plantilla de variables de entorno
 └── .env                  # Keys reales (no se sube al repositorio)
 ```
@@ -147,13 +161,27 @@ DroneWaste/
 
 ## Funcionalidades del dashboard
 
-- **Mapa en vivo** — 30 contenedores sobre calles reales de Chapinero con nivel de llenado en tiempo real, 3 drones animados y deteccion de escaneo por proximidad
-- **Clasificador con IA** — Carga una foto de un contenedor y Gemini Vision analiza y clasifica su nivel de llenado con descripcion tecnica
-- **Rutas D-VRP** — Calculo de rutas optimas para camiones recolectores con animacion del recorrido, vaciado de contenedores en tiempo real y KPIs de eficiencia
-- **Simulacion automatica** — El backend simula el llenado progresivo de contenedores con tasas individuales por tipo de zona (comercial o residencial) y genera alertas cuando se supera el umbral critico
+- **Mapa en vivo** — 70 contenedores sobre calles reales de Chapinero con nivel de llenado en tiempo real y 3 drones animados patrullando
+- **Clasificador con IA** — sube una foto de contenedor; el modelo local MobileNetV3 clasifica el nivel de llenado (fallback a Gemini Vision si el modelo no está disponible)
+- **Rutas inteligentes** — 3 camiones operando simultáneamente con OR-Tools CVRP, animación del recorrido, vaciado en tiempo real y auto-reinicio al completar
+- **Simulación automática** — el backend simula llenado progresivo con tasas individuales por zona y genera alertas al superar umbrales críticos
+
+---
+
+## Entrenar el modelo de clasificación (opcional)
+
+El clasificador de imágenes funciona con Gemini como fallback. Para usar el modelo local entrenado:
+
+```bash
+cd DroneWaste_ai
+pip install -r requirements.txt
+jupyter notebook model/train.ipynb
+```
+
+Ejecutar todas las celdas genera `model/model.pt`. El servidor FastAPI lo carga automáticamente al reiniciar.
 
 ---
 
 ## Autores
 
-Proyecto desarrollado para la asignatura Transformación Digital y Soluciones Empresariales — Escuela Colombiana de Ingenieria Julio Garavito
+Proyecto desarrollado para la asignatura Transformación Digital y Soluciones Empresariales — Escuela Colombiana de Ingeniería Julio Garavito
