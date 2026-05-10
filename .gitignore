@@ -1,0 +1,15 @@
+# ── Frontend ─────────────────────────────────────────
+DroneWaste_front/node_modules/
+DroneWaste_front/dist/
+DroneWaste_front/.env
+DroneWaste_front/.env.local
+
+# ── Backend ──────────────────────────────────────────
+DroneWaste_back/target/
+DroneWaste_back/*.log
+
+# ── Sistema ──────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.suo
+*.idea/
