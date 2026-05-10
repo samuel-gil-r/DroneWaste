@@ -1,0 +1,23 @@
+services:
+
+  backend:
+    build:
+      context: ./DroneWaste_back
+    container_name: dronewaste-back
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./DroneWaste_front
+      args:
+        VITE_GOOGLE_MAPS_KEY: ${VITE_GOOGLE_MAPS_KEY}
+        VITE_GEMINI_KEY: ${VITE_GEMINI_KEY}
+        VITE_API_URL: http://localhost:8080
+    container_name: dronewaste-front
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped

@@ -8,6 +8,9 @@ DroneWaste_front/.env.local
 DroneWaste_back/target/
 DroneWaste_back/*.log
 
+# ── Docker ───────────────────────────────────────────
+.env
+
 # ── Sistema ──────────────────────────────────────────
 .DS_Store
 Thumbs.db
