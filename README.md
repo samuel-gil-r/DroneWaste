@@ -156,4 +156,4 @@ DroneWaste/
 
 ## Autores
 
-Proyecto desarrollado para la asignatura Desarrollo Orientado a Software — Escuela Colombiana de Ingenieria Julio Garavito, 2026.
+Proyecto desarrollado para la asignatura Transformación Digital y Soluciones Empresariales — Escuela Colombiana de Ingenieria Julio Garavito
