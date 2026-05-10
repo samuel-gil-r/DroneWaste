@@ -7,7 +7,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./DroneWaste_ai/model:/app/model   # model.pt persiste entre reinicios
+      - ./DroneWaste_ai/model:/app/model
     restart: unless-stopped
 
   backend:
@@ -16,6 +16,10 @@ services:
     container_name: dronewaste-back
     ports:
       - "8080:8080"
+    environment:
+      - AI_SERVICE_URL=http://ai:8000
+    depends_on:
+      - ai
     restart: unless-stopped
 
   frontend:

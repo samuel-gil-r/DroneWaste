@@ -738,11 +738,15 @@ export default function App() {
           </nav>
 
           <div style={{ flex: 1, padding: 16, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            {tab === 'Mapa' && (
+            <div style={{ display: tab === 'Mapa'       ? 'flex' : 'none', flex: 1, flexDirection: 'column', minHeight: 0 }}>
               <LiveMap containers={containers} drones={drones} onContainerClick={setSelected} selected={selected} activeScans={activeScans} />
-            )}
-            {tab === 'Clasificar' && <Classifier onNewAlert={addAlert} />}
-            {tab === 'Rutas'      && <RoutesMap  containers={containers} onContainerCollected={handleCollected} />}
+            </div>
+            <div style={{ display: tab === 'Clasificar' ? 'flex' : 'none', flex: 1, flexDirection: 'column', minHeight: 0 }}>
+              <Classifier onNewAlert={addAlert} />
+            </div>
+            <div style={{ display: tab === 'Rutas'      ? 'flex' : 'none', flex: 1, flexDirection: 'column', minHeight: 0 }}>
+              <RoutesMap containers={containers} onContainerCollected={handleCollected} />
+            </div>
           </div>
         </main>
       </div>

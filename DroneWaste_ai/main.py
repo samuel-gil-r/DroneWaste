@@ -1,7 +1,9 @@
 import base64
 import io
 import json
+import logging
 from pathlib import Path
+from typing import Any
 
 import torch
 import torchvision.transforms as T
@@ -9,6 +11,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 from pydantic import BaseModel
+
+from optimizer import solve_cvrp
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="DroneWaste AI Service", version="1.0.0")
 
@@ -68,7 +74,43 @@ class ClassifyResponse(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "model_loaded": _model is not None}
+    try:
+        import ortools  # noqa: F401
+        ortools_ok = True
+    except ImportError:
+        ortools_ok = False
+    return {"status": "ok", "model_loaded": _model is not None, "ortools": ortools_ok}
+
+
+# ── OR-Tools CVRP ────────────────────────────────────────────────────────────
+
+class DepotModel(BaseModel):
+    lat: float
+    lng: float
+
+class RouteRequest(BaseModel):
+    containers: list[dict[str, Any]]
+    depot: DepotModel
+    num_vehicles: int = 1
+    capacity_l: int = 12_000
+    time_limit_s: int = 3
+
+@app.post("/routes/solve")
+def routes_solve(req: RouteRequest):
+    try:
+        result = solve_cvrp(
+            containers=req.containers,
+            depot={"lat": req.depot.lat, "lng": req.depot.lng},
+            num_vehicles=req.num_vehicles,
+            capacity_l=req.capacity_l,
+            time_limit_s=req.time_limit_s,
+        )
+        return result
+    except ImportError:
+        raise HTTPException(status_code=503, detail="OR-Tools no instalado. Ejecuta: pip install ortools")
+    except Exception as e:
+        logger.error("Error en CVRP solver: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/classify", response_model=ClassifyResponse)
