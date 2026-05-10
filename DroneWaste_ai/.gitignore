@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+model/model.pt
+dataset/VACIO/
+dataset/BAJO/
+dataset/MEDIO/
+dataset/ALTO/
+dataset/DESBORDADO/
+.ipynb_checkpoints/

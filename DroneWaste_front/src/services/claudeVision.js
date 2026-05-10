@@ -1,16 +1,15 @@
-// Clasifica imagen de contenedor usando Gemini 1.5 Flash Vision API
+// Clasifica imagen de contenedor: intenta el microservicio local primero,
+// cae a Gemini si el servicio local no está disponible.
+
+const AI_URL = import.meta.env.VITE_AI_URL ?? 'http://localhost:8000';
 
 /* ── Extrae el primer objeto JSON de cualquier texto ────────────────────── */
 function extractJSON(text) {
-  // Intento 1: parse directo
   try { return JSON.parse(text.trim()); } catch {}
-  // Intento 2: quitar bloques markdown
   const clean = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
   try { return JSON.parse(clean); } catch {}
-  // Intento 3: buscar la primera { ... } en el texto
   const match = text.match(/\{[\s\S]*?\}/);
   if (match) { try { return JSON.parse(match[0]); } catch {} }
-  // Intento 4: objeto más largo si hay llaves anidadas
   const fullMatch = text.match(/\{[\s\S]*\}/);
   if (fullMatch) { try { return JSON.parse(fullMatch[0]); } catch {} }
   return null;
@@ -57,19 +56,30 @@ function normalize(raw) {
            justificacion, prioridad, accion_recomendada, tiempo_estimado };
 }
 
-/* ── Llamada a la API ────────────────────────────────────────────────────── */
-export const classifyImage = async (base64Image, mimeType) => {
-  /* VITE_GEMINI_KEY: key de Google AI Studio (aistudio.google.com/app/apikey)
-     Es diferente a VITE_GOOGLE_MAPS_KEY — son APIs distintas.           */
+/* ── Clasificación con modelo propio (DroneWaste_ai FastAPI) ─────────────── */
+async function classifyWithLocalModel(base64Image, mimeType) {
+  const response = await fetch(`${AI_URL}/classify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image: base64Image, mime_type: mimeType }),
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.detail || `AI service HTTP ${response.status}`);
+  }
+  return normalize(await response.json());
+}
+
+/* ── Clasificación con Gemini (fallback) ─────────────────────────────────── */
+async function classifyWithGemini(base64Image, mimeType) {
   const key = import.meta.env.VITE_GEMINI_KEY || import.meta.env.VITE_GOOGLE_MAPS_KEY;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`;
 
   const body = {
     contents: [{
       parts: [
-        {
-          inline_data: { mime_type: mimeType, data: base64Image }
-        },
+        { inline_data: { mime_type: mimeType, data: base64Image } },
         {
           text: `Eres el módulo de visión embebida MobileNetV3 del sistema DroneWaste, en un dron sobrevolando Chapinero, Bogotá, a 30 metros de altura.
 
@@ -98,7 +108,7 @@ Devuelve ÚNICAMENTE este JSON (sin texto antes ni después, sin markdown):
     generationConfig: {
       temperature:      0.1,
       maxOutputTokens:  600,
-      responseMimeType: 'application/json', // fuerza respuesta JSON pura
+      responseMimeType: 'application/json',
     }
   };
 
@@ -110,19 +120,27 @@ Devuelve ÚNICAMENTE este JSON (sin texto antes ni después, sin markdown):
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error(err?.error?.message || `HTTP ${response.status}`);
+    throw new Error(err?.error?.message || `Gemini HTTP ${response.status}`);
   }
 
   const data = await response.json();
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-
   if (!text) throw new Error('Gemini no devolvió contenido. Verifica la API key y los permisos.');
 
   const raw = extractJSON(text);
-  if (!raw)  throw new Error(`No se pudo interpretar la respuesta de Gemini. Respuesta recibida: "${text.slice(0, 120)}…"`);
+  if (!raw) throw new Error(`No se pudo interpretar la respuesta de Gemini: "${text.slice(0, 120)}…"`);
 
   const normalized = normalize(raw);
   if (!normalized) throw new Error('La respuesta no contiene los campos esperados.');
-
   return normalized;
+}
+
+/* ── Punto de entrada principal ─────────────────────────────────────────── */
+export const classifyImage = async (base64Image, mimeType) => {
+  try {
+    return await classifyWithLocalModel(base64Image, mimeType);
+  } catch (localErr) {
+    console.warn('[DroneWaste AI] Servicio local no disponible, usando Gemini:', localErr.message);
+    return await classifyWithGemini(base64Image, mimeType);
+  }
 };

@@ -411,7 +411,7 @@ export default function RoutesMap({ containers = [], onContainerCollected }) {
         setTripDone(true);
         setTruckPos(truckRef.current.depot); // ref — sin truck en deps
       }
-    }, 80);
+    }, 420);
   }, [triggerCollection]); // ESTABLE: no depende de truck ni containers
 
   /* Mantiene startTripRef sincronizado sin que otros callbacks dependan de él */
